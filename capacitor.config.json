@@ -1,0 +1,12 @@
+{
+  "appId": "com.mapcine.app",
+  "appName": "MapCine",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0b0d12"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

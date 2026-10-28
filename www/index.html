@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0b0d12" />
+<title>MapCine — estúdio de mapas animados</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css" />
+<link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <header id="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <span>MapCine</span>
+    </div>
+    <div class="top-actions">
+      <button id="btn-undo" class="btn icon" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
+      <button id="btn-redo" class="btn icon" title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer">↷</button>
+      <button id="btn-play" class="btn primary" title="Reproduzir a animação">▶ Reproduzir</button>
+      <button id="btn-export" class="btn" title="Exportar vídeo">⬇ Exportar</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <div id="map"></div>
+
+    <canvas id="overlay-map" aria-hidden="true"></canvas>
+    <div id="theme-tint" aria-hidden="true"></div>
+
+    <div id="overlay-media" aria-hidden="true"></div>
+
+    <div id="overlay-text" class="pos-bottom">
+      <h1 id="ov-heading"></h1>
+      <p id="ov-sub"></p>
+    </div>
+
+    <div id="transition" aria-hidden="true"></div>
+
+    <div id="progress"><div id="progress-bar"></div></div>
+
+    <div id="toast" class="hidden"></div>
+  </main>
+
+  <aside id="panel">
+    <div id="panel-grip"></div>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="paises">Mapa</button>
+      <button class="tab" data-tab="camera">Câmera</button>
+      <button class="tab" data-tab="texto">Texto</button>
+      <button class="tab" data-tab="midia">Mídia</button>
+      <button class="tab" data-tab="audio">Áudio</button>
+      <button class="tab" data-tab="camadas">Camadas</button>
+      <button class="tab" data-tab="timeline">Linha do tempo</button>
+      <button class="tab" data-tab="exportar">Exportar</button>
+    </nav>
+
+    <!-- MAPA / BUSCA -->
+    <section class="pane active" id="pane-paises">
+      <p class="hint">Toque em um país ou estado no mapa para destacar, ou busque por país, estado ou cidade. Cada item selecionado tem cor própria: toque no quadradinho para pintar.</p>
+
+      <div class="field search-field">
+        <label for="place-search">Buscar país, estado ou cidade</label>
+        <input id="place-search" type="search" placeholder="Ex.: Brasil, Pará, Belém" autocomplete="off" />
+        <span id="search-status" class="search-status"></span>
+      </div>
+      <ul id="search-results" class="list results"></ul>
+
+      <div class="section-head">
+        <span>Selecionados <em id="sel-count">0</em></span>
+        <button id="btn-clear-countries" class="link">limpar</button>
+      </div>
+      <ul id="selected-all" class="list"></ul>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="global-color">Cor inicial</label>
+          <input id="global-color" type="color" value="#e0a83c" />
+        </div>
+        <div class="field">
+          <label for="global-opacity">Opacidade <span id="opacity-label">65%</span></label>
+          <input id="global-opacity" type="range" min="10" max="100" value="65" />
+        </div>
+      </div>
+
+      <div class="section-head">
+        <span>Estilo do lugar <em id="ps-name">—</em></span>
+      </div>
+      <div id="place-style" class="ps-panel">
+        <div class="field-row">
+          <div class="field">
+            <label for="ps-fill">Preenchimento</label>
+            <select id="ps-fill">
+              <option value="color">Cor</option>
+              <option value="flag">Bandeira do país</option>
+              <option value="stripes">Listras</option>
+              <option value="gradient">Degradê</option>
+              <option value="none">Sem preenchimento</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ps-border">Contorno</label>
+            <input id="ps-border" type="color" value="#ffffff" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="ps-width">Espessura <span id="ps-width-label">3,5</span></label>
+            <input id="ps-width" type="range" min="0" max="12" step="0.5" value="3.5" />
+          </div>
+          <div class="field">
+            <label for="ps-glow">Brilho <span id="ps-glow-label">60%</span></label>
+            <input id="ps-glow" type="range" min="0" max="100" value="60" />
+          </div>
+        </div>
+        <label class="check"><input id="ps-pulse" type="checkbox" /> Pulso no contorno</label>
+        <label class="check"><input id="ps-label" type="checkbox" /> Mostrar o nome no mapa</label>
+        <div class="field" id="ps-pin-field" hidden>
+          <label for="ps-mode">Cidade como</label>
+          <select id="ps-mode">
+            <option value="area">Área do município</option>
+            <option value="pin">Alfinete com nome</option>
+            <option value="both">Área + alfinete</option>
+          </select>
+        </div>
+        <p class="hint" id="ps-hint">Toque no nome de um lugar da lista acima para editar o estilo dele.</p>
+      </div>
+    </section>
+
+    <!-- CÂMERA -->
+    <section class="pane" id="pane-camera">
+      <div class="section-head">
+        <span>Ir para um lugar marcado <em id="jump-count">0</em></span>
+        <span class="jump-nav">
+          <button id="jump-prev" class="link" title="Lugar anterior" aria-label="Lugar anterior">◀</button>
+          <button id="jump-next" class="link" title="Próximo lugar" aria-label="Próximo lugar">▶</button>
+        </span>
+      </div>
+      <div id="quick-jump" class="jump-chips"></div>
+      <p class="hint" id="jump-hint">Toque num lugar para voar até ele e depois em “+ Keyframe”.</p>
+
+      <div class="field-row">
+        <button id="btn-add-kf" class="btn primary grow">+ Keyframe</button>
+        <button id="btn-update-kf" class="btn grow">Atualizar atual</button>
+      </div>
+
+      <ol id="kf-list" class="kf-list"></ol>
+      <p class="hint" id="kf-hint">Cada keyframe guarda centro, zoom, inclinação e rotação. A duração é o tempo até chegar nele. Importe uma narração para a cena e a duração se ajusta sozinha (áudio + intervalo).</p>
+    </section>
+
+    <!-- MÍDIA / SOBREPOSIÇÕES -->
+    <section class="pane" id="pane-midia">
+      <div class="field">
+        <label>Importar mídia para sobrepor</label>
+        <div class="field-row">
+          <button id="md-pick-image" class="btn grow" type="button">🖼 Imagem</button>
+          <button id="md-pick-video" class="btn grow" type="button">🎞 GIF / vídeo</button>
+        </div>
+        <input id="md-file" type="file" accept="image/*,video/*" multiple hidden />
+      </div>
+      <p class="hint">A mídia entra sobre o mapa na prévia e no vídeo exportado. GIF e vídeo rodam sozinhos enquanto a sobreposição está no tempo.</p>
+
+      <div class="section-head">
+        <span>Sobreposições <em id="md-count">0</em></span>
+        <button id="btn-prune-media" class="link" title="Apaga arquivos que o projeto não usa">limpar não usados</button>
+      </div>
+      <ul id="md-list" class="list"></ul>
+
+      <div id="md-editor" hidden>
+        <div class="section-head"><span id="md-editor-title">Sobreposição selecionada</span></div>
+        <div class="field-row">
+          <div class="field">
+            <label for="md-x">Horizontal <span id="md-x-label">50%</span></label>
+            <input id="md-x" type="range" min="0" max="100" value="50" />
+          </div>
+          <div class="field">
+            <label for="md-y">Vertical <span id="md-y-label">50%</span></label>
+            <input id="md-y" type="range" min="0" max="100" value="50" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="md-scale">Tamanho <span id="md-scale-label">40%</span></label>
+            <input id="md-scale" type="range" min="5" max="120" value="40" />
+          </div>
+          <div class="field">
+            <label for="md-opacity">Opacidade <span id="md-opacity-label">100%</span></label>
+            <input id="md-opacity" type="range" min="0" max="100" value="100" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="md-rot">Rotação <span id="md-rot-label">0°</span></label>
+            <input id="md-rot" type="range" min="-180" max="180" value="0" />
+          </div>
+          <div class="field">
+            <label for="md-start">Entra em <span id="md-start-label">0,0 s</span></label>
+            <input id="md-start" type="range" min="0" max="60" step="0.1" value="0" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="md-end">Sai em <span id="md-end-label">5,0 s</span></label>
+          <input id="md-end" type="range" min="0" max="60" step="0.1" value="5" />
+        </div>
+      </div>
+    </section>
+
+    <!-- CAMADAS: TEMAS, ROTAS E REGIÕES -->
+    <section class="pane" id="pane-camadas">
+      <div class="section-head"><span>Tema do mapa</span></div>
+      <div class="field">
+        <label for="th-theme">Aparência</label>
+        <select id="th-theme"></select>
+      </div>
+      <p class="hint">Cada keyframe também pode trocar o tema (aba Câmera). Use a transição “Cortina diagonal” para a troca entrar varrendo a tela.</p>
+
+      <div class="section-head"><span>Rotas <em id="rt-count">0</em></span></div>
+      <div class="field-row">
+        <div class="field">
+          <label for="rt-from">De</label>
+          <select id="rt-from"></select>
+        </div>
+        <div class="field">
+          <label for="rt-to">Até</label>
+          <select id="rt-to"></select>
+        </div>
+      </div>
+      <button id="btn-add-route" class="btn wide">+ Criar rota</button>
+      <ul id="rt-list" class="list"></ul>
+
+      <div id="rt-editor" hidden>
+        <div class="section-head"><span id="rt-editor-title">Rota</span></div>
+        <div class="field-row">
+          <div class="field">
+            <label for="rt-color">Cor</label>
+            <input id="rt-color" type="color" value="#ffffff" />
+          </div>
+          <div class="field">
+            <label for="rt-width">Espessura <span id="rt-width-label">4,5</span></label>
+            <input id="rt-width" type="range" min="1" max="14" step="0.5" value="4.5" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="rt-curve">Curvatura <span id="rt-curve-label">25%</span></label>
+            <input id="rt-curve" type="range" min="-90" max="90" value="25" />
+          </div>
+          <div class="field">
+            <label for="rt-label-text">Etiqueta</label>
+            <input id="rt-label-text" type="text" placeholder="distância em km" maxlength="30" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="rt-start">Entra em <span id="rt-start-label">0,0 s</span></label>
+            <input id="rt-start" type="range" min="0" max="30" step="0.1" value="0" />
+          </div>
+          <div class="field">
+            <label for="rt-end">Sai em <span id="rt-end-label">6,0 s</span></label>
+            <input id="rt-end" type="range" min="0" max="30" step="0.1" value="6" />
+          </div>
+        </div>
+        <label class="check"><input id="rt-arrow" type="checkbox" checked /> Seta na ponta</label>
+        <label class="check"><input id="rt-show-label" type="checkbox" checked /> Mostrar a distância</label>
+        <label class="check"><input id="rt-auto" type="checkbox" checked /> Só começa quando a câmera enquadra</label>
+        <p class="hint" id="rt-camera-hint"></p>
+        <label class="check"><input id="rt-sound" type="checkbox" checked /> Som da rota (percurso suave)</label>
+        <button id="btn-remove-route" class="btn wide">Remover rota</button>
+      </div>
+
+      <div class="section-head"><span>Conflitos <em id="cf-count">0</em></span></div>
+      <div class="field-row">
+        <div class="field">
+          <label for="cf-atk">Atacante</label>
+          <select id="cf-atk"></select>
+        </div>
+        <div class="field">
+          <label for="cf-def">Alvo</label>
+          <select id="cf-def"></select>
+        </div>
+      </div>
+      <button id="btn-add-conflict" class="btn wide">⚔ Criar conflito</button>
+      <p class="hint">Um lugar ataca o outro: a bomba cai, explode e o território muda de mãos — ou resiste, conforme você escolher.</p>
+      <ul id="cf-list" class="list"></ul>
+
+      <div id="cf-editor" hidden>
+        <div class="section-head"><span id="cf-editor-title">Conflito</span></div>
+        <div class="field">
+          <label for="cf-result">Resultado</label>
+          <select id="cf-result">
+            <option value="win">Conquista — o atacante toma o território</option>
+            <option value="hold">Resistência — o alvo segura o território</option>
+            <option value="draw">Empate — ninguém conquista nada</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="cf-start">Começa em <span id="cf-start-label">0,0 s</span></label>
+            <input id="cf-start" type="range" min="0" max="30" step="0.1" value="0" />
+          </div>
+          <div class="field">
+            <label for="cf-dur">Duração <span id="cf-dur-label">3,0 s</span></label>
+            <input id="cf-dur" type="range" min="0.8" max="12" step="0.1" value="3" />
+          </div>
+        </div>
+        <label class="check"><input id="cf-bomb" type="checkbox" checked /> Bombas e explosões</label>
+        <label class="check"><input id="cf-sound" type="checkbox" checked /> Som de combate</label>
+        <p class="hint" id="cf-hint"></p>
+        <button id="btn-remove-conflict" class="btn wide">Remover conflito</button>
+      </div>
+
+      <div class="section-head"><span>Regiões desenhadas <em id="rg-count">0</em></span></div>
+      <div class="field-row">
+        <button id="btn-region-draw" class="btn grow">✎ Desenhar no mapa</button>
+        <button id="btn-region-finish" class="btn grow" disabled>Concluir</button>
+        <button id="btn-region-cancel" class="btn icon" disabled title="Cancelar desenho">×</button>
+      </div>
+      <p class="hint" id="rg-hint">Toque nos vértices da região no mapa e depois em “Concluir”. Serve para áreas como “Sahara” ou “Cerrado”.</p>
+      <div class="field-row">
+        <div class="field">
+          <label for="rg-color">Cor</label>
+          <input id="rg-color" type="color" value="#e0a83c" />
+        </div>
+        <div class="field">
+          <label for="rg-opacity">Opacidade <span id="rg-opacity-label">55%</span></label>
+          <input id="rg-opacity" type="range" min="0" max="100" value="55" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="rg-border">Contorno</label>
+          <input id="rg-border" type="color" value="#ffffff" />
+        </div>
+        <div class="field">
+          <label for="rg-label">Rótulo</label>
+          <input id="rg-label" type="text" placeholder="Sahara" maxlength="40" />
+        </div>
+      </div>
+      <ul id="rg-list" class="list"></ul>
+    </section>
+
+    <!-- LINHA DO TEMPO -->
+    <section class="pane" id="pane-timeline">
+      <div class="tl-bar">
+        <button id="tl-play" class="btn icon" title="Reproduzir do cursor">▶</button>
+        <span id="tl-time" class="tl-time">0,0 s</span>
+        <span class="tl-dur" id="tl-dur">de 0,0 s</span>
+        <span class="grow"></span>
+        <button id="tl-zoom-out" class="btn icon" title="Diminuir zoom">−</button>
+        <button id="tl-zoom-in" class="btn icon" title="Aumentar zoom">+</button>
+      </div>
+
+      <div class="tl-edit" id="tl-edit">
+        <div class="tl-edit-head">
+          <span class="tl-sel" id="tl-sel">Toque num bloco para editar</span>
+          <button id="tl-pin" class="btn small" title="Trazer o bloco selecionado para o cursor (P)">📌 Trazer</button>
+          <button id="tl-add-image" class="btn small" title="Importar imagem para sobrepor">🖼 Imagem</button>
+          <input id="tl-image-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div class="tl-edit-actions">
+          <button id="tl-split" class="btn small" disabled title="Dividir o bloco no cursor (S)">✂ Dividir</button>
+          <button id="tl-cut-start" class="btn small" disabled title="Cortar o começo até o cursor">⇤ Cortar início</button>
+          <button id="tl-cut-end" class="btn small" disabled title="Cortar o fim até o cursor">Cortar fim ⇥</button>
+          <button id="tl-dup" class="btn small" disabled title="Duplicar o bloco (D)">⧉ Duplicar</button>
+          <button id="tl-del" class="btn small danger" disabled title="Apagar o bloco (Delete)">🗑 Apagar</button>
+        </div>
+      </div>
+
+      <div class="tl-scroll" id="tl-scroll">
+        <div class="tl-content" id="tl-content">
+          <div class="tl-track tl-ruler-track">
+            <span class="tl-name">Tempo</span>
+            <div class="tl-lane"><div class="tl-ruler" id="tl-ruler"></div></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Câmera</span>
+            <div class="tl-lane" data-lane="camera" id="tl-lane-camera"></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Narração</span>
+            <div class="tl-lane" data-lane="narration" id="tl-lane-narration"></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Mídia</span>
+            <div class="tl-lane" data-lane="overlay" id="tl-lane-overlay"></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Rotas</span>
+            <div class="tl-lane" data-lane="routes" id="tl-lane-routes"></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Conflitos</span>
+            <div class="tl-lane" data-lane="conflicts" id="tl-lane-conflicts"></div>
+          </div>
+          <div class="tl-track">
+            <span class="tl-name">Efeitos</span>
+            <div class="tl-lane" data-lane="sfx" id="tl-lane-sfx"></div>
+          </div>
+          <div class="tl-playhead" id="tl-playhead">
+            <div class="tl-playhead-grip" id="tl-playhead-grip">0,0</div>
+          </div>
+          <button id="tl-pin-hint" class="tl-pin-hint" hidden></button>
+        </div>
+      </div>
+
+      <p class="hint">Toque/arraste na régua para navegar. Puxe a borda direita de um bloco para mudar a duração; arraste um bloco de mídia ou de efeito para mover no tempo.</p>
+    </section>
+
+    <!-- TEXTO -->
+    <section class="pane" id="pane-texto">
+      <div class="field">
+        <label for="txt-heading">Título</label>
+        <input id="txt-heading" type="text" placeholder="A Rota da Seda" maxlength="60" />
+      </div>
+      <div class="field">
+        <label for="txt-sub">Subtítulo</label>
+        <input id="txt-sub" type="text" placeholder="1200 a.C. — 1450 d.C." maxlength="90" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="txt-color">Cor</label>
+          <input id="txt-color" type="color" value="#f4e7c4" />
+        </div>
+        <div class="field">
+          <label for="txt-size">Tamanho <span id="size-label">42</span></label>
+          <input id="txt-size" type="range" min="18" max="90" value="42" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="txt-pos">Posição</label>
+        <select id="txt-pos">
+          <option value="pos-bottom" selected>Rodapé</option>
+          <option value="pos-top">Topo</option>
+          <option value="pos-center">Centro</option>
+        </select>
+      </div>
+      <label class="check"><input id="txt-shadow" type="checkbox" checked /> Sombra para leitura</label>
+    </section>
+
+    <!-- ÁUDIO -->
+    <section class="pane" id="pane-audio">
+      <label class="check"><input id="au-enabled" type="checkbox" checked /> Áudio no vídeo</label>
+
+      <div class="field">
+        <label for="au-source">Trilha sonora</label>
+        <select id="au-source">
+          <option value="none">Sem trilha</option>
+          <option value="ambient">Ambiente (gerada)</option>
+          <option value="file">Meu arquivo…</option>
+        </select>
+      </div>
+
+      <div class="field" id="au-file-field" hidden>
+        <label for="au-file">Arquivo de áudio</label>
+        <input id="au-file" type="file" accept="audio/*" />
+        <span id="au-file-name" class="file-name"></span>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="au-music">Trilha <span id="au-music-label">45%</span></label>
+          <input id="au-music" type="range" min="0" max="100" value="45" />
+        </div>
+        <div class="field">
+          <label for="au-sfx">Efeitos <span id="au-sfx-label">85%</span></label>
+          <input id="au-sfx" type="range" min="0" max="100" value="85" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="au-narr">Narração <span id="au-narr-label">100%</span></label>
+          <input id="au-narr" type="range" min="0" max="100" value="100" />
+        </div>
+        <div class="field">
+          <label for="au-gap">Intervalo após narração <span id="au-gap-label">0,8 s</span></label>
+          <input id="au-gap" type="range" min="0" max="30" step="1" value="8" />
+        </div>
+      </div>
+
+      <label class="check"><input id="au-duck" type="checkbox" checked /> Abaixar a trilha quando a narração fala</label>
+
+      <div class="field">
+        <label for="au-offset">Ajuste fino da narração <span id="au-offset-label">0 ms</span></label>
+        <input id="au-offset" type="range" min="-500" max="500" step="10" value="0" />
+      </div>
+
+      <button id="btn-fit-all" class="btn wide">Ajustar todas as cenas ao áudio</button>
+      <p class="hint">Cada cena passa a durar o tamanho da narração + o intervalo. É assim que o vídeo fica sincronizado com a sua voz.</p>
+
+      <div class="field">
+        <label for="au-time">Posição do efeito <span id="au-time-label">0,0 s</span></label>
+        <input id="au-time" type="range" min="0" max="10" step="1" value="0" />
+      </div>
+
+      <div class="section-head"><span>Adicionar efeito</span></div>
+      <div id="au-sfx-grid" class="sfx-grid"></div>
+
+      <div class="section-head"><span>Efeitos importados <em id="au-import-count">0</em></span></div>
+      <div class="field">
+        <label for="au-import">Meu som (mp3, wav, ogg…)</label>
+        <input id="au-import" type="file" accept="audio/*" multiple />
+      </div>
+      <div id="au-imported-grid" class="sfx-grid"></div>
+
+      <div class="section-head">
+        <span>Efeitos no vídeo <em id="au-count">0</em></span>
+        <button id="btn-clear-sfx" class="link">limpar</button>
+      </div>
+      <ul id="au-events" class="list"></ul>
+
+      <p class="hint">Os efeitos prontos são sintetizados no aparelho, sem baixar nada. Os importados usam os seus arquivos. Todos entram na prévia e no vídeo exportado.</p>
+    </section>
+
+    <!-- EXPORTAR -->
+    <section class="pane" id="pane-exportar">
+      <div class="field">
+        <label for="ex-res">Resolução</label>
+        <select id="ex-res">
+          <option value="1280x720">720p — paisagem (1280×720)</option>
+          <option value="1920x1080" selected>Full HD — paisagem (1920×1080)</option>
+          <option value="2560x1440">2K — paisagem (2560×1440)</option>
+          <option value="3840x2160">4K — paisagem (3840×2160)</option>
+          <option value="720x1280">720p — vertical (720×1280)</option>
+          <option value="1080x1920">Full HD — vertical (1080×1920)</option>
+          <option value="1080x1080">Quadrado (1080×1080)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="ex-fps">Frames por segundo</label>
+        <select id="ex-fps">
+          <option value="24">24</option>
+          <option value="30" selected>30</option>
+          <option value="60">60</option>
+        </select>
+      </div>
+
+      <dl class="summary">
+        <div><dt>Duração</dt><dd id="ex-duration">0,0 s</dd></div>
+        <div><dt>Keyframes</dt><dd id="ex-kf">0</dd></div>
+        <div><dt>Narração</dt><dd id="ex-narr">—</dd></div>
+        <div><dt>Sobreposições</dt><dd id="ex-overlays">0</dd></div>
+        <div><dt>Áudio</dt><dd id="ex-audio">Sem trilha</dd></div>
+        <div><dt>Formato</dt><dd>WebM (VP9)</dd></div>
+      </dl>
+
+      <p class="hint">A exportação roda em tempo real: um vídeo de 15 s leva ~15 s. O áudio é gravado junto (narração, trilha e efeitos) e a narração fica sincronizada com as cenas.</p>
+
+      <button id="btn-render" class="btn primary wide">Gerar vídeo</button>
+      <div id="render-status" class="hint"></div>
+    </section>
+  </aside>
+
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
