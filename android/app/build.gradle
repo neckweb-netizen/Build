@@ -24,6 +24,27 @@ android {
     }
 }
 
+tasks.register('removeDuplicateCompressedAssets') {
+    doLast {
+        def assetsDir = file('src/main/assets')
+        if (!assetsDir.exists()) {
+            return
+        }
+        assetsDir.eachFileRecurse { asset ->
+            if (asset.isFile() && asset.name.endsWith('.gz')) {
+                def plain = new File(asset.parentFile, asset.name.substring(0, asset.name.length() - 3))
+                if (plain.exists()) {
+                    asset.delete()
+                }
+            }
+        }
+    }
+}
+
+tasks.matching { it.name ==~ /merge.*Assets/ }.configureEach {
+    dependsOn 'removeDuplicateCompressedAssets'
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
